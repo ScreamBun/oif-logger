@@ -1,0 +1,65 @@
+version: '3'
+
+services:
+  logger_server:
+    hostname: logger_server
+    image: ccoe-gitlab-registry.hii-tsd.com/screamingbunny/logger/server
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    environment:
+      ES_HOST: logger_elastic
+      ES_PORT: 9200
+      LOG_PREFIX: 'orchestrator'
+    ports:
+    - 127.0.0.1:514:514/udp
+    volumes:
+    - ./logs:/var/log/syslog
+    external_links:
+    - logger_elastic
+    restart: on-failure:5
+
+  logger_gui:
+    hostname: logger_gui
+    image: ccoe-gitlab-registry.hii-tsd.com/screamingbunny/logger/gui
+    build:
+      context: ./gui
+      dockerfile: Dockerfile
+    environment:
+      ES_HOST: logger_elastic
+      ES_PORT: 9200
+    ports:
+    - 8081:80
+    external_links:
+    - logger_elastic
+    restart: on-failure:5
+
+  logger_elastic:
+    hostname: logger_elastic
+    image: elasticsearch:7.5.1
+    environment:
+    - cluster.name=orc_es01
+    - discovery.type=single-node
+    - bootstrap.memory_lock=true
+    - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    - http.cors.enabled=true
+    - http.cors.allow-origin=*
+    - "http.cors.allow-methods=OPTIONS, HEAD, GET, POST, PUT, DELETE"
+    - "http.cors.allow-headers=X-Requested-With,X-Auth-Token,Content-Type,Content-Length"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+    - 9200:9200
+    volumes:
+    - ./es_data:/usr/share/elasticsearch/data
+
+    depends_on:
+      - logger_server
+    logging:
+      driver: syslog
+      options:
+        syslog-address: 'udp://127.0.0.1:${LOG_PORT:-514}'
+        syslog-format: rfc5424
+        tag: "logger-es"
